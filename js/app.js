@@ -32,19 +32,20 @@ function switchTab(sectionId) {
 }
 
 // Initialization and Rendering
-document.addEventListener('DOMContentLoaded', () => {
-    renderCursos();
-    renderUsuarios();
-    populateSelects();
-    renderPagamentos();
+document.addEventListener('DOMContentLoaded', async () => {
+    await renderCursos();
+    await renderUsuarios();
+    await populateSelects();
+    await renderPagamentos();
 });
 
-function populateSelects() {
+async function populateSelects() {
     // Populate Categorias
     const catSelect = document.getElementById('curso-categoria');
     if(catSelect) {
-        catSelect.innerHTML = '';
-        db.getAll('categorias').forEach(cat => {
+        catSelect.innerHTML = '<option value="" disabled selected>Selecione uma categoria...</option>';
+        const categorias = await db.getAll('categorias');
+        categorias.forEach(cat => {
             const opt = document.createElement('option');
             opt.value = cat.ID_Categoria;
             opt.textContent = cat.Nome;
@@ -55,10 +56,11 @@ function populateSelects() {
     // Populate Instrutores
     const instSelect = document.getElementById('curso-instrutor');
     const userSelects = [instSelect, document.getElementById('checkout-usuario')];
+    const usuarios = await db.getAll('usuarios');
     userSelects.forEach(select => {
         if(select) {
-            select.innerHTML = '';
-            db.getAll('usuarios').forEach(user => {
+            select.innerHTML = '<option value="" disabled selected>Selecione um usuário/instrutor...</option>';
+            usuarios.forEach(user => {
                 const opt = document.createElement('option');
                 opt.value = user.ID_Usuario;
                 opt.textContent = user.NomeCompleto;
@@ -70,8 +72,9 @@ function populateSelects() {
     // Populate Planos
     const planSelect = document.getElementById('checkout-plano');
     if(planSelect) {
-        planSelect.innerHTML = '';
-        db.getAll('planos').forEach(plan => {
+        planSelect.innerHTML = '<option value="" disabled selected>Selecione um plano...</option>';
+        const planos = await db.getAll('planos');
+        planos.forEach(plan => {
             const opt = document.createElement('option');
             opt.value = plan.ID_Plano;
             opt.textContent = `${plan.Nome} - R$ ${plan.Preco.toFixed(2)}`;
@@ -81,19 +84,21 @@ function populateSelects() {
 }
 
 // Rendering Cursos
-function renderCursos() {
+async function renderCursos() {
     const list = document.getElementById('cursos-list');
     if(!list) return;
     list.innerHTML = '';
 
-    const cursos = db.getAll('cursos');
+    const cursos = await db.getAll('cursos');
     if (cursos.length === 0) {
         list.innerHTML = `<div class="col-12"><p class="text-muted">Nenhum curso cadastrado.</p></div>`;
         return;
     }
 
+    const categorias = await db.getAll('categorias');
+
     cursos.forEach(curso => {
-        const cat = db.getAll('categorias').find(c => c.ID_Categoria == curso.ID_Categoria);
+        const cat = categorias.find(c => c.ID_Categoria == curso.ID_Categoria);
         list.innerHTML += `
             <div class="col-md-6 col-lg-4">
                 <div class="card h-100">
@@ -116,14 +121,16 @@ function renderCursos() {
 }
 
 // Rendering Usuarios
-function renderUsuarios() {
+async function renderUsuarios() {
     const list = document.getElementById('usuarios-list');
     if(!list) return;
     list.innerHTML = '';
 
-    const usuarios = db.getAll('usuarios');
+    const usuarios = await db.getAll('usuarios');
     usuarios.forEach(user => {
-        const dateStr = user.DataCadastro.toLocaleDateString('pt-BR');
+        // user.DataCadastro may be a string from JSON now, so handle that
+        const dataCad = new Date(user.DataCadastro);
+        const dateStr = dataCad.toLocaleDateString('pt-BR');
         list.innerHTML += `
             <tr>
                 <td>#${user.ID_Usuario}</td>
@@ -140,12 +147,12 @@ function renderUsuarios() {
 }
 
 // Rendering Pagamentos
-function renderPagamentos() {
+async function renderPagamentos() {
     const list = document.getElementById('pagamentos-list');
     if(!list) return;
     list.innerHTML = '';
 
-    const pagamentos = db.getAll('pagamentos');
+    const pagamentos = await db.getAll('pagamentos');
     if(pagamentos.length === 0){
         list.innerHTML = `<p class="text-muted">Nenhum pagamento registrado ainda.</p>`;
         return;
@@ -155,11 +162,12 @@ function renderPagamentos() {
     const sorted = [...pagamentos].reverse();
 
     sorted.forEach(pag => {
+        const dataPag = new Date(pag.DataPagamento);
         list.innerHTML += `
             <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center mb-2 rounded border">
                 <div>
                     <h6 class="mb-1 fw-bold">Transação #${pag.Id_Transacao_Gateway}</h6>
-                    <small class="text-muted">Método: ${pag.MetodoPagamento} | ${pag.DataPagamento.toLocaleDateString()}</small>
+                    <small class="text-muted">Método: ${pag.MetodoPagamento} | ${dataPag.toLocaleDateString()}</small>
                 </div>
                 <span class="badge bg-success rounded-pill px-3 py-2">R$ ${pag.ValorPago.toFixed(2)}</span>
             </div>
@@ -168,7 +176,7 @@ function renderPagamentos() {
 }
 
 // Form Handlers
-document.getElementById('form-curso')?.addEventListener('submit', function(e) {
+document.getElementById('form-curso')?.addEventListener('submit', async function(e) {
     e.preventDefault();
     const titulo = document.getElementById('curso-titulo').value;
     const descricao = document.getElementById('curso-descricao').value;
@@ -176,56 +184,57 @@ document.getElementById('form-curso')?.addEventListener('submit', function(e) {
     const categoria = parseInt(document.getElementById('curso-categoria').value);
     const instrutor = parseInt(document.getElementById('curso-instrutor').value);
 
-    const novoId = db.generateId('cursos');
+    const novoId = await db.generateId('cursos');
     const novoCurso = new Curso(novoId, titulo, descricao, instrutor, categoria, nivel, 0, 0);
     
-    db.add('cursos', novoCurso);
-    renderCursos();
+    await db.add('cursos', novoCurso);
+    await renderCursos();
     bootstrap.Modal.getInstance(document.getElementById('modal-curso')).hide();
     this.reset();
 });
 
-document.getElementById('form-usuario')?.addEventListener('submit', function(e) {
+document.getElementById('form-usuario')?.addEventListener('submit', async function(e) {
     e.preventDefault();
     const nome = document.getElementById('usuario-nome').value;
     const email = document.getElementById('usuario-email').value;
     const senha = document.getElementById('usuario-senha').value;
 
-    const novoId = db.generateId('usuarios');
+    const novoId = await db.generateId('usuarios');
     const novoUsuario = new Usuario(novoId, nome, email, senha);
     
-    db.add('usuarios', novoUsuario);
-    renderUsuarios();
-    populateSelects(); // update selects in form
+    await db.add('usuarios', novoUsuario);
+    await renderUsuarios();
+    await populateSelects(); // update selects in form
     bootstrap.Modal.getInstance(document.getElementById('modal-usuario')).hide();
     this.reset();
 });
 
-document.getElementById('form-checkout')?.addEventListener('submit', function(e) {
+document.getElementById('form-checkout')?.addEventListener('submit', async function(e) {
     e.preventDefault();
     const idUsuario = parseInt(document.getElementById('checkout-usuario').value);
     const idPlano = parseInt(document.getElementById('checkout-plano').value);
     const metodo = document.getElementById('checkout-metodo').value;
 
-    const plano = db.getAll('planos').find(p => p.ID_Plano === idPlano);
+    const planos = await db.getAll('planos');
+    const plano = planos.find(p => p.ID_Plano === idPlano);
     
     // Create Assinatura
-    const idAssinatura = db.generateId('assinaturas');
+    const idAssinatura = await db.generateId('assinaturas');
     const dataInicio = new Date();
     const dataFim = new Date();
     dataFim.setMonth(dataFim.getMonth() + plano.DuracaoMeses);
     
     const novaAssinatura = new Assinatura(idAssinatura, idUsuario, idPlano, dataInicio, dataFim);
-    db.add('assinaturas', novaAssinatura);
+    await db.add('assinaturas', novaAssinatura);
 
     // Create Pagamento
-    const idPagamento = db.generateId('pagamentos');
+    const idPagamento = await db.generateId('pagamentos');
     const randTx = 'TX-' + Math.random().toString(36).substr(2, 9).toUpperCase();
     
     const novoPagamento = new Pagamento(idPagamento, idAssinatura, plano.Preco, metodo, randTx);
-    db.add('pagamentos', novoPagamento);
+    await db.add('pagamentos', novoPagamento);
 
-    renderPagamentos();
+    await renderPagamentos();
     alert('Assinatura e Pagamento processados com sucesso!');
     this.reset();
 });
@@ -233,25 +242,27 @@ document.getElementById('form-checkout')?.addEventListener('submit', function(e)
 // Logic for Modules and Classes 
 let cursoAtualId = null;
 
-function abrirModalModulos(idCurso) {
+async function abrirModalModulos(idCurso) {
     cursoAtualId = idCurso;
-    const curso = db.getAll('cursos').find(c => c.ID_Curso === idCurso);
+    const cursos = await db.getAll('cursos');
+    const curso = cursos.find(c => c.ID_Curso === idCurso);
     document.getElementById('modal-modulos-title').textContent = `Estrutura do Curso: ${curso.Titulo}`;
     
     // Set hidden field
     document.getElementById('modulo-id-curso').value = idCurso;
     
-    renderAccordionModulos(idCurso);
+    await renderAccordionModulos(idCurso);
     const modModal = new bootstrap.Modal(document.getElementById('modal-modulos-aulas'));
     modModal.show();
 }
 
-function renderAccordionModulos(idCurso) {
+async function renderAccordionModulos(idCurso) {
     const accordion = document.getElementById('accordion-modulos');
     accordion.innerHTML = '';
 
-    const modulos = db.getAll('modulos').filter(m => m.ID_Curso === idCurso).sort((a,b) => a.Ordem - b.Ordem);
-    const aulas = db.getAll('aulas');
+    const allModulos = await db.getAll('modulos');
+    const modulos = allModulos.filter(m => m.ID_Curso === idCurso).sort((a,b) => a.Ordem - b.Ordem);
+    const aulas = await db.getAll('aulas');
 
     if (modulos.length === 0) {
         accordion.innerHTML = '<p class="text-muted mt-3 text-center">Nenhum módulo cadastrado para este curso.</p>';
@@ -307,8 +318,9 @@ function renderAccordionModulos(idCurso) {
     });
 }
 
-function abrirModalNovoModulo() {
-    const maxOrdem = db.getAll('modulos')
+window.abrirModalNovoModulo = async function() {
+    const allModulos = await db.getAll('modulos');
+    const maxOrdem = allModulos
         .filter(m => m.ID_Curso === cursoAtualId)
         .reduce((max, m) => m.Ordem > max ? m.Ordem : max, 0);
     document.getElementById('modulo-ordem').value = maxOrdem + 1;
@@ -319,8 +331,9 @@ function abrirModalNovoModulo() {
     newModModal.show();
 }
 
-function abrirModalNovaAula(idModulo) {
-    const maxOrdem = db.getAll('aulas')
+window.abrirModalNovaAula = async function(idModulo) {
+    const allAulas = await db.getAll('aulas');
+    const maxOrdem = allAulas
         .filter(a => a.ID_Modulo === idModulo)
         .reduce((max, a) => a.Ordem > max ? a.Ordem : max, 0);
         
@@ -331,23 +344,22 @@ function abrirModalNovaAula(idModulo) {
     newAulaModal.show();
 }
 
-// Handler forms para módulo e aula
-document.getElementById('form-modulo')?.addEventListener('submit', function(e) {
+document.getElementById('form-modulo')?.addEventListener('submit', async function(e) {
     e.preventDefault();
     const titulo = document.getElementById('modulo-titulo').value;
     const ordem = parseInt(document.getElementById('modulo-ordem').value);
     const idCurso = parseInt(document.getElementById('modulo-id-curso').value);
 
-    const novoId = db.generateId('modulos');
+    const novoId = await db.generateId('modulos');
     const novoModulo = new Modulo(novoId, idCurso, titulo, ordem);
-    db.add('modulos', novoModulo);
+    await db.add('modulos', novoModulo);
 
-    renderAccordionModulos(idCurso);
+    await renderAccordionModulos(idCurso);
     bootstrap.Modal.getInstance(document.getElementById('modal-novo-modulo')).hide();
     this.reset();
 });
 
-document.getElementById('form-aula')?.addEventListener('submit', function(e) {
+document.getElementById('form-aula')?.addEventListener('submit', async function(e) {
     e.preventDefault();
     const titulo = document.getElementById('aula-titulo').value;
     const tipo = document.getElementById('aula-tipo').value;
@@ -356,12 +368,12 @@ document.getElementById('form-aula')?.addEventListener('submit', function(e) {
     const ordem = parseInt(document.getElementById('aula-ordem').value);
     const idModulo = parseInt(document.getElementById('aula-id-modulo').value);
 
-    const novoId = db.generateId('aulas');
+    const novoId = await db.generateId('aulas');
     const novaAula = new Aula(novoId, idModulo, titulo, tipo, url, duracao, ordem);
-    db.add('aulas', novaAula);
+    await db.add('aulas', novaAula);
 
     // Get active course from global state
-    renderAccordionModulos(cursoAtualId);
+    await renderAccordionModulos(cursoAtualId);
     bootstrap.Modal.getInstance(document.getElementById('modal-nova-aula')).hide();
     this.reset();
 });
